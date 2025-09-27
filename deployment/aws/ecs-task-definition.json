@@ -1,0 +1,151 @@
+{
+  "family": "todo-app",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "postgres",
+      "image": "postgres:16",
+      "essential": true,
+      "environment": [
+        {
+          "name": "POSTGRES_DB",
+          "value": "todoapp"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "postgres"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "password"
+        }
+      ],
+      "portMappings": [
+        {
+          "containerPort": 5432,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/todo-app",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "postgres"
+        }
+      }
+    },
+    {
+      "name": "neo4j",
+      "image": "neo4j:5.25",
+      "essential": true,
+      "environment": [
+        {
+          "name": "NEO4J_AUTH",
+          "value": "neo4j/password"
+        }
+      ],
+      "portMappings": [
+        {
+          "containerPort": 7474,
+          "protocol": "tcp"
+        },
+        {
+          "containerPort": 7687,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/todo-app",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "neo4j"
+        }
+      }
+    },
+    {
+      "name": "backend",
+      "image": "YOUR_ECR_REPOSITORY_URI/todo-backend:latest",
+      "essential": true,
+      "environment": [
+        {
+          "name": "DATABASE_URL",
+          "value": "postgresql://postgres:password@localhost:5432/todoapp"
+        },
+        {
+          "name": "NEO4J_URI",
+          "value": "bolt://localhost:7687"
+        },
+        {
+          "name": "NEO4J_USER",
+          "value": "neo4j"
+        },
+        {
+          "name": "NEO4J_PASSWORD",
+          "value": "password"
+        }
+      ],
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "dependsOn": [
+        {
+          "containerName": "postgres",
+          "condition": "START"
+        },
+        {
+          "containerName": "neo4j",
+          "condition": "START"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/todo-app",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "backend"
+        }
+      }
+    },
+    {
+      "name": "frontend",
+      "image": "YOUR_ECR_REPOSITORY_URI/todo-frontend:latest",
+      "essential": true,
+      "environment": [
+        {
+          "name": "NEXT_PUBLIC_API_URL",
+          "value": "http://localhost:8000"
+        }
+      ],
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "dependsOn": [
+        {
+          "containerName": "backend",
+          "condition": "START"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/todo-app",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "frontend"
+        }
+      }
+    }
+  ]
+}

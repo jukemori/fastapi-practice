@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.DS_Store
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.env*.local
+frontend/.vercel
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+.DS_Store
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+*.log
+
+# Documentation builds
+docs/build/
+docs/_build/
+docs/source/_static/
+docs/source/_templates/
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Misc
+*.log
+.DS_Store
+Thumbs.db

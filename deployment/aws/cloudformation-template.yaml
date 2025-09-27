@@ -1,0 +1,208 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Todo App Infrastructure on AWS'
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where resources will be created
+  
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnet IDs for ECS tasks
+  
+  ImageUriBackend:
+    Type: String
+    Description: ECR URI for backend image
+  
+  ImageUriFrontend:
+    Type: String
+    Description: ECR URI for frontend image
+
+Resources:
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: todo-app-cluster
+      CapacityProviders:
+        - FARGATE
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+
+  # CloudWatch Log Group
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/todo-app
+      RetentionInDays: 7
+
+  # ECS Task Execution Role
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: todo-app-execution-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # ECS Task Role
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: todo-app-task-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+  # Security Group for ECS Tasks
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Todo App ECS tasks
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 7474
+          ToPort: 7474
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 7687
+          ToPort: 7687
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+
+  # ECS Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: todo-app
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 1024
+      Memory: 2048
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: postgres
+          Image: postgres:16
+          Essential: true
+          Environment:
+            - Name: POSTGRES_DB
+              Value: todoapp
+            - Name: POSTGRES_USER
+              Value: postgres
+            - Name: POSTGRES_PASSWORD
+              Value: password
+          PortMappings:
+            - ContainerPort: 5432
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: postgres
+        - Name: neo4j
+          Image: neo4j:5.25
+          Essential: true
+          Environment:
+            - Name: NEO4J_AUTH
+              Value: neo4j/password
+          PortMappings:
+            - ContainerPort: 7474
+            - ContainerPort: 7687
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: neo4j
+        - Name: backend
+          Image: !Ref ImageUriBackend
+          Essential: true
+          Environment:
+            - Name: DATABASE_URL
+              Value: postgresql://postgres:password@localhost:5432/todoapp
+            - Name: NEO4J_URI
+              Value: bolt://localhost:7687
+            - Name: NEO4J_USER
+              Value: neo4j
+            - Name: NEO4J_PASSWORD
+              Value: password
+          PortMappings:
+            - ContainerPort: 8000
+          DependsOn:
+            - ContainerName: postgres
+              Condition: START
+            - ContainerName: neo4j
+              Condition: START
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: backend
+        - Name: frontend
+          Image: !Ref ImageUriFrontend
+          Essential: true
+          Environment:
+            - Name: NEXT_PUBLIC_API_URL
+              Value: http://localhost:8000
+          PortMappings:
+            - ContainerPort: 3000
+          DependsOn:
+            - ContainerName: backend
+              Condition: START
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: frontend
+
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: todo-app-service
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          Subnets: !Ref SubnetIds
+          AssignPublicIp: ENABLED
+
+Outputs:
+  ClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref ECSCluster
+  
+  ServiceName:
+    Description: ECS Service Name
+    Value: !Ref ECSService
